@@ -1,0 +1,85 @@
+# --- Environment & system files ---
+.env
+.envrc
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# --- Byte-compiled / cache files ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+.dmypy.json
+
+# --- Dataset / test data / checkpoints ---
+dataset/
+test/
+checkpoints/
+models/checkpoints
+
+# --- Logs / reports ---
+*.log
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+.hypothesis/
+cover/
+
+# --- Build / dist / packaging ---
+build/
+dist/
+downloads/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- IDE / Editor specific ---
+.idea/
+.vscode/
+.spyproject/
+.ropeproject/
+.pybuilder/
+target/
+marimo/_static/
+marimo/_lsp/
+__marimo__/
+cursor/
+.cursorignore
+.cursorindexingignore
+
+# --- Database / local app files ---
+db.sqlite3
+db.sqlite3-journal
+
+# --- Misc tools ---
+.cyton_debug/
+.pyre/
+.pytype/
+.DS_Store
+
+# --- Model artifacts (optional, comment if needed) ---
+# models/*.h5
+# models/*.tflite
