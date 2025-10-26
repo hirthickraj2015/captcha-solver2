@@ -1,108 +1,91 @@
 #!/usr/bin/env python3
+
 import os
-import numpy
+import numpy as np
 import random
+import string
 import cv2
+import argparse
+import captcha.image
 import hashlib
 import csv
-from captcha.image import ImageCaptcha
+from sklearn.model_selection import train_test_split
 
-
-
-# configration
-
-font_dir = "./fonts"                  
-output_dir = "./dataset"               
-symbols_file = "./symbols.txt"         
-use_mixed_fonts = False               
-image_width = 192                     
-image_height = 96                      
-min_length = 1                         
-max_length = 6                         
-captchas_per_font = 100000             
-train_ratio = 0.8                     
-
-
-
-def generate_hashed_filename(text: str) -> str:
-    """Generate a SHA1 hash for the given captcha text."""
-    return hashlib.sha1(text.encode()).hexdigest() + ".png"
-
-
-def save_label_csv(csv_path: str, rows: list):
-    """Save list of (filename, label) to CSV."""
-    with open(csv_path, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["filename", "label"])
-        writer.writerows(rows)
-
-
-def generate_captchas_for_font(font_name, font_path, symbols):
-    """Generate captchas for a specific font, split into train/test, and save labels."""
-    font_base_name = os.path.splitext(font_name)[0]
-    print(f"Generating captchas for font: {font_base_name}")
-
-    # Create generator
-    generator = ImageCaptcha(width=image_width, height=image_height, fonts=[font_path])
-    generator.character_warp_dx = (0.1, 0.5)
-    generator.character_warp_dy = (0.2, 0.5)
-    generator.character_rotate = (-45, 45)
-
-    # Prepare folder structure
-    font_train_dir = os.path.join(output_dir, "train", font_base_name, "images")
-    font_test_dir = os.path.join(output_dir, "test", font_base_name, "images")
-    os.makedirs(font_train_dir, exist_ok=True)
-    os.makedirs(font_test_dir, exist_ok=True)
-
-    # For CSV mappings
-    train_labels = []
-    test_labels = []
-
-    for i in range(captchas_per_font):
-        length = random.randint(min_length, max_length)
-        captcha_text = ''.join(random.choice(symbols) for _ in range(length))
-        hashed_name = generate_hashed_filename(captcha_text)
-        image_array = numpy.array(generator.generate_image(captcha_text))
-
-        # Decide train/test split
-        if random.random() < train_ratio:
-            image_path = os.path.join(font_train_dir, hashed_name)
-            train_labels.append((hashed_name, captcha_text))
-        else:
-            image_path = os.path.join(font_test_dir, hashed_name)
-            test_labels.append((hashed_name, captcha_text))
-
-        cv2.imwrite(image_path, cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR))
-
-    # Save label files
-    save_label_csv(os.path.join(output_dir, "train", font_base_name, "labels.csv"), train_labels)
-    save_label_csv(os.path.join(output_dir, "test", font_base_name, "labels.csv"), test_labels)
-
-    print(f"   {len(train_labels)} train images, {len(test_labels)} test images saved for {font_base_name}")
-
+def safe_filename(text: str, ext=".png"):
+    encoded = text.encode('utf-8')
+    hash_str = hashlib.md5(encoded).hexdigest()
+    return hash_str + ext
 
 def main():
-    # Load symbol set
-    with open(symbols_file, 'r') as f:
-        captcha_symbols = f.readline().strip()
-
-    print(f"Generating captchas with symbol set: {captcha_symbols}")
-    os.makedirs(output_dir, exist_ok=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--width', type=int, required=True, help='Width of captcha image')
+    parser.add_argument('--height', type=int, required=True, help='Height of captcha image')
+    parser.add_argument('--length', type=int, required=True, help='Length of captchas in characters')
+    parser.add_argument('--count', type=int, required=True, help='Number of captchas per font')
+    parser.add_argument('--output-dir', type=str, required=True, help='Dataset folder')
+    parser.add_argument('--symbols', type=str, required=True, help='File with symbols to use in captchas')
+    parser.add_argument('--fonts-dir', type=str, default='fonts', help='Folder containing fonts')
+    args = parser.parse_args()
 
     # Load fonts
-    font_names = sorted(os.listdir(font_dir))
-    font_paths = [os.path.join(font_dir, f) for f in font_names if os.path.isfile(os.path.join(font_dir, f))]
-    print(f"Found {len(font_names)} fonts")
+    font_paths = [os.path.join(args.fonts_dir, f) for f in os.listdir(args.fonts_dir)
+                  if f.lower().endswith(('.ttf', '.otf'))]
+    if not font_paths:
+        print(f"No fonts found in {args.fonts_dir}. Exiting.")
+        exit(1)
 
-    if use_mixed_fonts:
-        print("Mixed font mode not implemented with hashing yet.")
-        return
+    # Load symbols
+    with open(args.symbols, 'r', encoding='utf-8') as f:
+        captcha_symbols = f.readline().strip()
+    valid_symbols = captcha_symbols.replace('?', '')
 
-    # Generate captchas per font
-    for font_name, font_path in zip(font_names, font_paths):
-        generate_captchas_for_font(font_name, font_path, captcha_symbols)
-
-    print("\nDataset generation complete!")
+    print(f"Generating captchas with symbols: {captcha_symbols}")
     
-if __name__ == "__main__":
+    # Prepare output folders
+    train_dir = os.path.join(args.output_dir, "train")
+    test_dir = os.path.join(args.output_dir, "test")
+    os.makedirs(train_dir, exist_ok=True)
+    os.makedirs(test_dir, exist_ok=True)
+
+    # Initialize CSV writers
+    train_csv = open(os.path.join(train_dir, "labels.csv"), 'w', newline='', encoding='utf-8')
+    test_csv = open(os.path.join(test_dir, "labels.csv"), 'w', newline='', encoding='utf-8')
+    train_writer = csv.writer(train_csv)
+    test_writer = csv.writer(test_csv)
+    train_writer.writerow(["filename", "label"])
+    test_writer.writerow(["filename", "label"])
+
+    for font_path in font_paths:
+        print(f"Generating captchas for font: {os.path.basename(font_path)}")
+        captcha_generator = captcha.image.ImageCaptcha(width=args.width, height=args.height, fonts=[font_path])
+
+        data = []
+        for _ in range(args.count):
+            valid_length = random.randint(1, args.length)
+            random_str = ''.join([random.choice(valid_symbols) for _ in range(valid_length)])
+            filename_str = random_str + '?' * (args.length - valid_length)
+            hash_name = hashlib.md5((random_str + os.path.basename(font_path)).encode('utf-8')).hexdigest()
+            data.append((hash_name, filename_str, random_str))
+
+        # Train/test split 80/20
+        train_data, test_data = train_test_split(data, test_size=0.2, random_state=42)
+
+        # Save images and CSVs
+        for hash_name, filename_str, random_str in train_data:
+            image_path = os.path.join(train_dir, hash_name + '.png')
+            image = np.array(captcha_generator.generate_image(random_str))
+            cv2.imwrite(image_path, image)
+            train_writer.writerow([hash_name, filename_str])
+
+        for hash_name, filename_str, random_str in test_data:
+            image_path = os.path.join(test_dir, hash_name + '.png')
+            image = np.array(captcha_generator.generate_image(random_str))
+            cv2.imwrite(image_path, image)
+            test_writer.writerow([hash_name, filename_str])
+
+    train_csv.close()
+    test_csv.close()
+    print("Captcha generation completed.")
+
+if __name__ == '__main__':
     main()
